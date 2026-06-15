@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OOTS Business Procedures — Interactive Map</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+<style>
+  :root{
+    --navy:#1F2A56; --blue:#3756A6; --pink:#C53B6E; --green:#1F8B6C; --amber:#C97A2D;
+    --panel:#F4F6FB; --panel2:#DEE6F4; --text:#333333; --muted:#6E7280; --white:#FFFFFF;
+    --line:#D4DBEC;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--text); background:var(--white); display:flex; flex-direction:column; height:100vh; overflow:hidden;
+    font-size:13px;
+  }
+  /* Header */
+  header{
+    background:var(--navy); color:#fff; padding:10px 16px; display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+    box-shadow:0 2px 6px rgba(31,42,86,.18); z-index:5;
+  }
+  header .title{font-size:17px; font-weight:700; line-height:1.1;}
+  header .subtitle{font-size:11.5px; color:#B9C4E4; margin-top:2px;}
+  header .spacer{flex:1;}
+  header .ctrl{display:flex; align-items:center; gap:6px; font-size:12px; color:#D7DEF2;}
+  header select, header button{
+    font:inherit; font-size:12px; border-radius:7px; border:1px solid #4a5a8f; padding:6px 10px; cursor:pointer;
+  }
+  header select{border:1px solid #4a5a8f; background:#fff; color:var(--navy); font-weight:600;}
+  header button{
+    background:var(--blue); color:#fff; border:1px solid transparent; font-weight:600; transition:filter .15s;
+  }
+  header button:hover{filter:brightness(1.1);}
+  header button.ghost{background:rgba(255,255,255,.12); }
+  /* Main */
+  .main{display:flex; flex:1; min-height:0;}
+  .rail{
+    width:308px; min-width:308px; background:var(--panel); border-right:1px solid var(--line);
+    overflow-y:auto; padding:14px;
+  }
+  .rail h3{font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:18px 0 8px;}
+  .rail h3:first-child{margin-top:0;}
+  .card{background:#fff; border-radius:10px; padding:12px; box-shadow:0 1px 3px rgba(31,42,86,.06); margin-bottom:6px;}
+  #search{
+    width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:8px; font:inherit; font-size:13px;
+  }
+  .hint{font-size:11px; color:var(--muted); margin-top:6px;}
+  .fgroup{margin-bottom:10px;}
+  .fgroup > label.flbl{display:block; font-weight:600; font-size:12px; margin-bottom:6px; color:var(--navy);}
+  .chips{display:flex; flex-wrap:wrap; gap:5px;}
+  .chip{
+    display:inline-flex; align-items:center; gap:5px; padding:4px 9px; border-radius:20px; border:1px solid var(--line);
+    background:#fff; font-size:11.5px; cursor:pointer; user-select:none; transition:all .12s;
+  }
+  .chip input{display:none;}
+  .chip.on{background:var(--blue); color:#fff; border-color:var(--blue);}
+  select.fsel{width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:8px; font:inherit; font-size:12px; background:#fff;}
+  .btnrow{display:flex; gap:6px; margin-top:8px;}
+  .btnrow button{flex:1; font:inherit; font-size:11.5px; padding:6px; border-radius:7px; border:1px solid var(--line); background:#fff; cursor:pointer; color:var(--navy); font-weight:600;}
+  .btnrow button:hover{background:var(--panel2);}
+  /* Metrics */
+  .metrics .big{display:flex; gap:8px; flex-wrap:wrap;}
+  .stat{flex:1; min-width:62px; background:var(--panel); border-radius:8px; padding:8px; text-align:center;}
+  .stat .n{font-size:18px; font-weight:700; color:var(--navy); line-height:1;}
+  .stat .l{font-size:10px; color:var(--muted); margin-top:3px;}
+  .bar{display:flex; height:14px; border-radius:7px; overflow:hidden; margin:6px 0 4px; background:var(--panel2);}
+  .bar > span{display:block; height:100%;}
+  .barlegend{display:flex; flex-wrap:wrap; gap:8px; font-size:10.5px; color:var(--muted);}
+  .barlegend i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:3px; vertical-align:middle;}
+  table.mtbl{width:100%; border-collapse:collapse; font-size:11.5px;}
+  table.mtbl th{ text-align:left; color:var(--muted); font-weight:600; padding:4px 5px; border-bottom:1px solid var(--line); cursor:pointer; white-space:nowrap;}
+  table.mtbl th.num, table.mtbl td.num{text-align:right;}
+  table.mtbl td{padding:4px 5px; border-bottom:1px solid #EEF1F8;}
+  table.mtbl tr.clickable{cursor:pointer;}
+  table.mtbl tr.clickable:hover{background:var(--panel);}
+  .minilist{list-style:none; margin:0; padding:0;}
+  .minilist li{display:flex; align-items:center; gap:8px; padding:3px 0; font-size:11.5px;}
+  .minilist .mb{flex:1; height:9px; border-radius:5px; background:var(--panel2); overflow:hidden;}
+  .minilist .mb span{display:block; height:100%; background:var(--blue);}
+  .minilist .mc{width:22px; text-align:right; color:var(--muted); font-weight:600;}
+  .minilist .mn{width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  /* Canvas */
+  .canvaswrap{flex:1; position:relative; min-width:0; background:
+     radial-gradient(circle at 1px 1px, #E5EAF6 1px, transparent 0) 0 0/22px 22px, #fff;}
+  #cy{position:absolute; inset:0;}
+  .canvas-hint{position:absolute; left:12px; bottom:12px; background:rgba(255,255,255,.9); border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:11px; color:var(--muted); pointer-events:none;}
+  #tooltip{position:fixed; pointer-events:none; background:var(--navy); color:#fff; padding:6px 9px; border-radius:7px; font-size:11.5px; max-width:240px; box-shadow:0 4px 12px rgba(0,0,0,.25); display:none; z-index:50;}
+  #tooltip .tt{font-size:9.5px; text-transform:uppercase; letter-spacing:.05em; opacity:.7;}
+  /* Detail */
+  .detail{
+    width:330px; min-width:330px; background:#fff; border-left:1px solid var(--line); overflow-y:auto; padding:16px;
+  }
+  .detail .placeholder{color:var(--muted); font-size:12.5px; line-height:1.5; margin-top:30px; text-align:center;}
+  .detail .dtype{display:inline-block; font-size:10px; text-transform:uppercase; letter-spacing:.06em; font-weight:700; color:#fff; padding:3px 9px; border-radius:20px; margin-bottom:10px;}
+  .detail h2{font-size:16px; margin:0 0 12px; color:var(--navy); line-height:1.25;}
+  .detail .row{display:flex; padding:6px 0; border-bottom:1px solid #EEF1F8; font-size:12.5px;}
+  .detail .row .k{width:120px; min-width:120px; color:var(--muted);}
+  .detail .row .v{flex:1; font-weight:500;}
+  .detail .sub{font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:16px 0 6px;}
+  .detail .tag{display:inline-block; padding:3px 8px; border-radius:6px; font-size:11px; color:#fff; margin:0 4px 4px 0;}
+  .detail ul.plain{list-style:none; margin:0; padding:0;}
+  .detail ul.plain li{padding:4px 0; font-size:12.5px; border-bottom:1px solid #EEF1F8;}
+  .detail .closex{float:right; cursor:pointer; color:var(--muted); font-size:18px; line-height:1; border:none; background:none;}
+  /* Legend */
+  .legend{
+    border-top:1px solid var(--line); background:var(--panel); padding:8px 16px; display:flex; flex-wrap:wrap; gap:14px;
+    align-items:center; font-size:11.5px; color:var(--muted);
+  }
+  .legend .grp{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+  .legend .grp b{color:var(--navy); font-weight:600; margin-right:2px;}
+  .legend .sw{display:inline-flex; align-items:center; gap:5px;}
+  .legend .sw i{width:11px; height:11px; border-radius:3px; display:inline-block;}
+  .legend .sep{width:1px; height:18px; background:var(--line);}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="title">OOTS Business Procedures — Interactive Map</div>
+    <div class="subtitle">Once-Only Technical System · CSAT evidence mapping · pivot the tree, expand, search &amp; measure coverage</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="ctrl">
+    <label for="rootSel">Root</label>
+    <select id="rootSel">
+      <option value="procedure">Procedure</option>
+      <option value="requirement">Requirement</option>
+      <option value="ms">Member State</option>
+      <option value="domain">Domain</option>
+      <option value="sdg">SDG category</option>
+      <option value="status">Status</option>
+    </select>
+  </div>
+  <div class="ctrl">
+    <label for="layoutSel">Layout</label>
+    <select id="layoutSel">
+      <option value="dagre">Dagre LR</option>
+      <option value="breadthfirst">Breadthfirst</option>
+    </select>
+  </div>
+  <button id="expandAll">Expand all</button>
+  <button id="collapseAll" class="ghost">Collapse all</button>
+  <button id="resetView" class="ghost">Reset view</button>
+  <button id="exportPng" class="ghost">Export PNG</button>
+</header>
+
+<div class="main">
+  <aside class="rail">
+    <h3>Search</h3>
+    <div class="card">
+      <input id="search" type="text" placeholder="procedure, requirement, MS, domain…" autocomplete="off" />
+      <div class="hint">Matches highlight, the rest dim. Press <b>Enter</b> to zoom to matches.</div>
+    </div>
+
+    <h3>Filters</h3>
+    <div class="card" id="filters"></div>
+
+    <h3>Metrics
+      <label style="float:right;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;color:var(--muted);cursor:pointer;">
+        <input type="checkbox" id="globalToggle" /> global
+      </label>
+    </h3>
+    <div class="card metrics" id="metrics"></div>
+  </aside>
+
+  <div class="canvaswrap">
+    <div id="cy"></div>
+    <div class="canvas-hint">Click a node to expand / collapse &amp; see details · drag to pan · scroll to zoom</div>
+  </div>
+
+  <aside class="detail" id="detail">
+    <div class="placeholder">Select any node to see its details here.<br/><br/>Tip: switch the <b>Root</b> to <b>Requirement</b> to see which procedures reuse the same evidence.</div>
+  </aside>
+</div>
+
+<div class="legend" id="legend"></div>
+<div id="tooltip"></div>
+
+<script id="data" type="application/json">[{"id": 2, "name": "Professional qualification recognition procedure Specialised Social Assistent", "ms": "AT", "sdg": "X1", "jurisdiction": "Regional (NUTS2)", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of tertiary education qualification", "domain": "Education"}, {"name": "Proof of absence of criminal record", "domain": "Population"}, {"name": "Proof of tertiary education qualification level", "domain": "Education"}, {"name": "Proof of tertiary education transcript", "domain": "Education"}, {"name": "Proof of citizenship", "domain": "Population"}, {"name": "Proof of domicile address", "domain": "Population"}], "lifecycle_status": "Draft"}, {"id": 3, "name": "Notification of business activity, permission for exercising a business activity, changes...", "ms": "FI", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of tertiary education qualification", "domain": "Education"}, {"name": "Proof of right to pursue the profession", "domain": "Professional Qualifications"}, {"name": "Proof of acquired rights according to Directive 2005/36/EC", "domain": "Professional Qualifications"}, {"name": "Proof of formal qualifications that give access to the profession according to Annex V of Directive 2005/36/EC", "domain": "Professional Qualifications"}, {"name": "Proof of change of family name", "domain": "Population"}, {"name": "Proof of professional licence", "domain": "Professional Qualifications"}, {"name": "Proof of citizenship", "domain": "Population"}], "lifecycle_status": "Published"}, {"id": 4, "name": "Public event official approval", "ms": "AT", "sdg": "X1", "jurisdiction": "Regional (NUTS2)", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of birth", "domain": "Population"}, {"name": "Proof of domicile address", "domain": "Population"}, {"name": "Proof of existence of a legal person (basic information)", "domain": "Business"}], "lifecycle_status": "Draft"}, {"id": 5, "name": "SATCL application for change of competent authority", "ms": "IT", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of citizenship", "domain": "Population"}, {"name": "Proof of domicile address", "domain": "Population"}], "lifecycle_status": "In review"}, {"id": 6, "name": "ATCL application for change of competent authority", "ms": "IT", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of citizenship", "domain": "Population"}, {"name": "Proof of domicile address", "domain": "Population"}], "lifecycle_status": "In review"}, {"id": 7, "name": "Receipt of authorisation for trade in endangered species", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 8, "name": "Registration of animals and plant growers at risk of international trade", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 9, "name": "Registration of specimens of wild species threatened by international trade", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 10, "name": "Notifying business activity", "ms": "DE", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of existence of a legal person (basic information)", "domain": "Business"}, {"name": "Proof of existence of a legal person", "domain": "Business"}], "lifecycle_status": "Draft"}, {"id": 11, "name": "Application for approval as Physiotherapist in animal health care", "ms": "SE", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 12, "name": "Application for approval as a farrier", "ms": "SE", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 13, "name": "Application for a veterinary nurse licence", "ms": "SE", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 14, "name": "Application for a veterinary licence", "ms": "SE", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 15, "name": "Application for authorisation as electrical contractor", "ms": "SE", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 16, "name": "Onboarding to The Dutch Enterprise Agency", "ms": "NL", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of existence of a legal person (basic information)", "domain": "Business"}], "lifecycle_status": "Draft"}, {"id": 17, "name": "Recognition of foreign professional qualification", "ms": "SK", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of secondary education qualification", "domain": "Education"}, {"name": "Proof of tertiary education qualification", "domain": "Education"}, {"name": "Proof of diploma supplement", "domain": "Education"}, {"name": "Proof of tertiary education qualification level", "domain": "Education"}, {"name": "Proof of tertiary education transcript", "domain": "Education"}, {"name": "Proof of secondary education transcript", "domain": "Education"}, {"name": "Proof of vocational education qualification", "domain": "Education"}, {"name": "Proof of language proficiency (based on courses duration as part of secondary school completion)", "domain": "Education"}], "lifecycle_status": "Draft"}, {"id": 18, "name": "Registration of business unit of foreign legal entity", "ms": "SK", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of secondary education transcript", "domain": "Education"}, {"name": "Proof of absence of criminal record", "domain": "Population"}, {"name": "Proof of secondary education qualification", "domain": "Education"}, {"name": "Proof of residence (all registered addresses)", "domain": "Population"}, {"name": "Proof of existence of a legal person", "domain": "Business"}], "lifecycle_status": "Draft"}, {"id": 19, "name": "Recognition of qualifications (pyrotechnic profession)", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 20, "name": "Recognition of qualifications (bomber profession)", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 21, "name": "Issuance of bomber certificates", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 22, "name": "Issuing certificates of head of blasting work", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 23, "name": "Issuance of certificates for detective activity", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 24, "name": "Licence for detective activity", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 25, "name": "Issuing pyrotechnician certificates", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 26, "name": "Certification of Latvian professionals abroad", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 27, "name": "Licence for commercial activities with weapons", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 28, "name": "Licence for commercial activities with pyrotechnic articles", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 29, "name": "Recognition of detective qualifications", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 30, "name": "Recognition of security guard qualifications", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 31, "name": "Issuing security certificates", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 32, "name": "Registration of construction merchants", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 33, "name": "Licensing of sworn auditor companies", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of absence of criminal record", "domain": "Population"}, {"name": "Proof of existence of a legal person", "domain": "Business"}], "lifecycle_status": "Draft"}, {"id": 34, "name": "Certification of sworn auditors", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of absence of criminal record", "domain": "Population"}, {"name": "Proof of absence of insolvency proceedings for natural person", "domain": "Business"}], "lifecycle_status": "Draft"}, {"id": 35, "name": "Fish buyer registration certificate", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 36, "name": "Environmental impact assessment (NATURA 2000)", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 37, "name": "Travel agent licence", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of absence of criminal record", "domain": "Population"}], "lifecycle_status": "Draft"}, {"id": 38, "name": "Registration of employees (social security)", "ms": "IT", "sdg": "X3", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 39, "name": "Payment of social contributions", "ms": "IT", "sdg": "X6", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 40, "name": "Corporate tax declaration", "ms": "IT", "sdg": "X4", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 41, "name": "Employer registration (natural person)", "ms": "IT", "sdg": "X2", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 42, "name": "Notification of end of employee contract", "ms": "IT", "sdg": "X5", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 43, "name": "Short-term activity (sworn auditor)", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of absence of criminal record", "domain": "Population"}, {"name": "Proof of absence of insolvency proceedings for natural person", "domain": "Business"}], "lifecycle_status": "In review"}, {"id": 44, "name": "Recognition of auditor company licence (EU)", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of existence of a legal person", "domain": "Business"}], "lifecycle_status": "In review"}, {"id": 45, "name": "Professional qualifications recognition", "ms": "PT", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of absence of criminal record", "domain": "Population"}], "lifecycle_status": "Draft"}, {"id": 46, "name": "Prior declaration for temporary mobility", "ms": "PT", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of tertiary education qualification level", "domain": "Education"}], "lifecycle_status": "Draft"}, {"id": 47, "name": "Professional installer title (ITED-ITUR)", "ms": "PT", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 48, "name": "Licence for explosives activities", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "In review"}, {"id": 49, "name": "Registration of guard activity merchants", "ms": "LV", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "In review"}, {"id": 50, "name": "Austrian implementation: Notification of business activity", "ms": "AT", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of citizenship", "domain": "Population"}, {"name": "Proof of absence of criminal record", "domain": "Population"}, {"name": "Proof of change of family name", "domain": "Population"}, {"name": "Proof of residence (all registered addresses)", "domain": "Population"}, {"name": "Proof of existence of a legal person (basic information)", "domain": "Business"}, {"name": "Proof of existence of a legal person", "domain": "Business"}, {"name": "Proof of absence of insolvency proceedings for natural person", "domain": "Business"}, {"name": "Proof of absence of insolvency proceedings for legal person", "domain": "Business"}], "lifecycle_status": "Draft"}, {"id": 51, "name": "Kimberly process certification system", "ms": "PT", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of existence of a legal person", "domain": "Business"}], "lifecycle_status": "Draft"}, {"id": 52, "name": "Cessation of Kimberly process certification", "ms": "PT", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of existence of a legal person", "domain": "Business"}], "lifecycle_status": "Draft"}, {"id": 53, "name": "Alterations to Kimberly certification", "ms": "PT", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of existence of a legal person", "domain": "Business"}], "lifecycle_status": "Draft"}, {"id": 54, "name": "Notification of business activity (HR)", "ms": "HR", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of absence of criminal record", "domain": "Population"}, {"name": "Proof of existence of a legal person (basic information)", "domain": "Business"}], "lifecycle_status": "Draft"}, {"id": 55, "name": "Viennese implementation: Notification of business activity", "ms": "AT", "sdg": "X1", "jurisdiction": "Regional (NUTS2)", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of domicile address", "domain": "Population"}, {"name": "Proof of tertiary education qualification", "domain": "Education"}, {"name": "Proof of birth", "domain": "Population"}, {"name": "Proof of change of family name", "domain": "Population"}, {"name": "Proof of secondary education qualification", "domain": "Education"}, {"name": "Proof of nationality", "domain": "Population"}, {"name": "Proof of absence of criminal record", "domain": "Population"}, {"name": "Proof of tertiary education qualification level", "domain": "Education"}, {"name": "Proof of tertiary education transcript", "domain": "Education"}, {"name": "Proof of existence of a legal person", "domain": "Business"}], "lifecycle_status": "Draft"}, {"id": 56, "name": "Purchase authorisation for pesticides", "ms": "DK", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of secondary education transcript", "domain": "Education"}, {"name": "Proof of secondary education qualification", "domain": "Education"}], "lifecycle_status": "Draft"}, {"id": 57, "name": "Recognition as foreign energy consultant", "ms": "DK", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 58, "name": "EU Lawyer application (Denmark)", "ms": "DK", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 59, "name": "Waste Water Treatment Plant Manager", "ms": "DK", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of secondary education transcript", "domain": "Education"}, {"name": "Proof of tertiary education qualification", "domain": "Education"}, {"name": "Proof of tertiary education transcript", "domain": "Education"}, {"name": "Proof of citizenship", "domain": "Population"}, {"name": "Proof of secondary education qualification", "domain": "Education"}, {"name": "Proof of nationality", "domain": "Population"}], "lifecycle_status": "Draft"}, {"id": 60, "name": "Rat Control (temporary provision)", "ms": "DK", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of secondary education transcript", "domain": "Education"}, {"name": "Proof of tertiary education qualification", "domain": "Education"}, {"name": "Proof of tertiary education transcript", "domain": "Education"}, {"name": "Proof of citizenship", "domain": "Population"}, {"name": "Proof of secondary education qualification", "domain": "Education"}, {"name": "Proof of nationality", "domain": "Population"}], "lifecycle_status": "Draft"}, {"id": 61, "name": "Well Driller (temporary provision)", "ms": "DK", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of secondary education transcript", "domain": "Education"}, {"name": "Proof of tertiary education qualification", "domain": "Education"}, {"name": "Proof of tertiary education transcript", "domain": "Education"}, {"name": "Proof of citizenship", "domain": "Population"}, {"name": "Proof of secondary education qualification", "domain": "Education"}, {"name": "Proof of nationality", "domain": "Population"}], "lifecycle_status": "Draft"}, {"id": 62, "name": "Vehicle inspection authorisation", "ms": "DK", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 63, "name": "Revised vehicle inspection authorisation", "ms": "DK", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 64, "name": "Tyrolean implementation: Notification of business activity", "ms": "AT", "sdg": "X1", "jurisdiction": "Regional (NUTS1)", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of birth", "domain": "Population"}, {"name": "Proof of absence of criminal record", "domain": "Population"}, {"name": "Proof of nationality", "domain": "Population"}, {"name": "Proof of domicile address", "domain": "Population"}], "lifecycle_status": "Draft"}, {"id": 65, "name": "Notification of business activity (CY)", "ms": "CY", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 66, "name": "Employer registration (CY)", "ms": "CY", "sdg": "X2", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 67, "name": "Employee registration (CY)", "ms": "CY", "sdg": "X3", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 68, "name": "End of contract notification (CY)", "ms": "CY", "sdg": "X5", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 69, "name": "Payment of contributions (CY)", "ms": "CY", "sdg": "X6", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 70, "name": "Corporate tax declaration (CY)", "ms": "CY", "sdg": "X4", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 71, "name": "Notification of business activity (IT)", "ms": "IT", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of citizenship", "domain": "Population"}, {"name": "Proof of domicile address", "domain": "Population"}], "lifecycle_status": "Draft"}, {"id": 72, "name": "Notification of temporary craft activity", "ms": "SI", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of existence of a legal person (basic information)", "domain": "Business"}], "lifecycle_status": "Published"}, {"id": 73, "name": "Corporate income tax return", "ms": "SI", "sdg": "X4", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 74, "name": "Employee registration (SI)", "ms": "SI", "sdg": "X3", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 75, "name": "Deregistration (SI)", "ms": "SI", "sdg": "X5", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 76, "name": "Employer registration (SI)", "ms": "SI", "sdg": "X2", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [], "lifecycle_status": "Draft"}, {"id": 77, "name": "Register of representative offices of foreign entrepreneurs", "ms": "PL", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in CSAT", "requirements": [{"name": "Proof of nationality", "domain": "Population"}], "lifecycle_status": "Draft"}, {"id": "A1", "name": "Notification of business activity, permission for exercising a business activity, changes in business activity, suspension/termination/closure of business activity, establishment of a branch and registration in the trade register.", "ms": "(Airtable)", "sdg": "X1", "jurisdiction": "National", "authority": null, "description": null, "status": "Already in Airtable", "requirements": [], "lifecycle_status": "Airtable"}]</script>
+<script>
+/* ===================== OOTS Interactive Map ===================== */
+const DATA = JSON.parse(document.getElementById('data').textContent);
+cytoscape.use(cytoscapeDagre);
+
+const DOMAIN_COLORS = {'Population':'#C53B6E','Education':'#3756A6','Business':'#1F8B6C','Professional Qualifications':'#C97A2D'};
+const STATUS_COLORS = {'Draft':'#C97A2D','In review':'#3756A6','Published':'#1F8B6C','Airtable':'#6E7280'};
+const TYPE_COLORS   = {procedure:'#1F2A56', ms:'#3756A6', sdg:'#7587A8', authority:'#6E7280'};
+const SDG_LABELS = {X1:'X1 · Start / run / close a business', X2:'X2 · Employer registration', X3:'X3 · Employee registration', X4:'X4 · Corporate tax', X5:'X5 · End of contract', X6:'X6 · Social contributions'};
+const TYPE_LABEL = {procedure:'Procedure', requirement:'Requirement', ms:'Member State', domain:'Domain', sdg:'SDG category', status:'Status'};
+
+const STATUS_ORDER = ['Draft','In review','Published','Airtable'];
+const DOMAIN_ORDER = ['Population','Education','Business','Professional Qualifications'];
+
+const state = {
+  root:'procedure', layout:'dagre', search:'', selected:null, globalMetrics:false, metricSort:{key:'ms',dir:1},
+  filters:{ms:new Set(), sdg:new Set(), domain:new Set(), status:new Set(), hasReq:'all'}
+};
+let expanded = new Set();
+let model = null;
+let cy = null;
+
+/* ---------- storage (guarded: http(s) only) ---------- */
+const canStore = location.protocol.startsWith('http');
+function saveState(){ if(!canStore) return; try{
+  localStorage.setItem('oots.state', JSON.stringify({
+    root:state.root, layout:state.layout, globalMetrics:state.globalMetrics,
+    filters:{ms:[...state.filters.ms],sdg:[...state.filters.sdg],domain:[...state.filters.domain],status:[...state.filters.status],hasReq:state.filters.hasReq}
+  }));
+}catch(e){} }
+function loadState(){ if(!canStore) return; try{
+  const s=JSON.parse(localStorage.getItem('oots.state')||'null'); if(!s) return;
+  state.root=s.root||state.root; state.layout=s.layout||state.layout; state.globalMetrics=!!s.globalMetrics;
+  if(s.filters){ ['ms','sdg','domain','status'].forEach(k=>state.filters[k]=new Set(s.filters[k]||[])); state.filters.hasReq=s.filters.hasReq||'all'; }
+}catch(e){} }
+
+/* ---------- filtering ---------- */
+function reqPasses(r){ return !state.filters.domain.size || state.filters.domain.has(r.domain); }
+function filteredProcs(){
+  const f=state.filters;
+  return DATA.filter(p=>{
+    if(f.ms.size && !f.ms.has(p.ms)) return false;
+    if(f.sdg.size && !f.sdg.has(p.sdg)) return false;
+    if(f.status.size && !f.status.has(p.lifecycle_status)) return false;
+    if(f.hasReq==='has' && p.requirements.length===0) return false;
+    if(f.hasReq==='none' && p.requirements.length>0) return false;
+    if(f.domain.size && !p.requirements.some(r=>f.domain.has(r.domain))) return false;
+    return true;
+  });
+}
+
+/* ---------- model build per pivot ---------- */
+function buildModel(procs){
+  const nodes=new Map(), edges=[], edgeSet=new Set(), roots=[];
+  function addNode(id,d){ if(!nodes.has(id)) nodes.set(id, Object.assign({id}, d)); return id; }
+  function markRoot(id){ const n=nodes.get(id); if(n) n.isRoot=true; if(!roots.includes(id)) roots.push(id); }
+  function addEdge(s,t){ const id='e::'+s+'::'+t; if(!edgeSet.has(id)){ edgeSet.add(id); edges.push({id,source:s,target:t}); } }
+  function procNode(p){ return addNode('proc::'+p.id,{type:'procedure',label:p.name,color:TYPE_COLORS.procedure,
+    meta:{ms:p.ms,sdg:p.sdg,authority:p.authority,jurisdiction:p.jurisdiction,lifecycle:p.lifecycle_status,status:p.status,reqCount:p.requirements.length}, procId:p.id}); }
+  function reqNode(name,domain){ return addNode('req::'+name,{type:'requirement',label:name,color:DOMAIN_COLORS[domain]||'#6E7280',meta:{domain}}); }
+
+  const pivot=state.root;
+  if(pivot==='procedure'){
+    procs.forEach(p=>{ const pid=procNode(p); markRoot(pid);
+      p.requirements.filter(reqPasses).forEach(r=>{ addEdge(pid, reqNode(r.name,r.domain)); }); });
+  } else if(pivot==='requirement'){
+    const map=new Map();
+    procs.forEach(p=>p.requirements.filter(reqPasses).forEach(r=>{ if(!map.has(r.name)) map.set(r.name,{domain:r.domain,procs:[]}); map.get(r.name).procs.push(p); }));
+    map.forEach((v,name)=>{ const rid=reqNode(name,v.domain); markRoot(rid); v.procs.forEach(p=>addEdge(rid, procNode(p))); });
+  } else if(pivot==='ms'){
+    const set=new Map(); procs.forEach(p=>{ (set.get(p.ms)||set.set(p.ms,[]).get(p.ms)).push(p); });
+    set.forEach((ps,ms)=>{ const mid=addNode('ms::'+ms,{type:'ms',label:ms,color:TYPE_COLORS.ms,meta:{ms}}); markRoot(mid);
+      ps.forEach(p=>{ const pid=procNode(p); addEdge(mid,pid); p.requirements.filter(reqPasses).forEach(r=>addEdge(pid, reqNode(r.name,r.domain))); }); });
+  } else if(pivot==='domain'){
+    const doms=new Map();
+    procs.forEach(p=>p.requirements.filter(reqPasses).forEach(r=>{
+      if(!doms.has(r.domain)) doms.set(r.domain,new Map());
+      const dm=doms.get(r.domain); (dm.get(r.name)||dm.set(r.name,[]).get(r.name)).push(p); }));
+    doms.forEach((reqs,dom)=>{ const did=addNode('dom::'+dom,{type:'domain',label:dom,color:DOMAIN_COLORS[dom]||'#6E7280',meta:{domain:dom}}); markRoot(did);
+      reqs.forEach((ps,name)=>{ const rid=reqNode(name,dom); addEdge(did,rid); ps.forEach(p=>addEdge(rid, procNode(p))); }); });
+  } else if(pivot==='sdg'){
+    const set=new Map(); procs.forEach(p=>{ const k=p.sdg||'(none)'; (set.get(k)||set.set(k,[]).get(k)).push(p); });
+    set.forEach((ps,sdg)=>{ const sid=addNode('sdg::'+sdg,{type:'sdg',label:SDG_LABELS[sdg]||sdg,color:TYPE_COLORS.sdg,meta:{sdg}}); markRoot(sid);
+      ps.forEach(p=>{ const pid=procNode(p); addEdge(sid,pid); p.requirements.filter(reqPasses).forEach(r=>addEdge(pid, reqNode(r.name,r.domain))); }); });
+  } else if(pivot==='status'){
+    const set=new Map(); procs.forEach(p=>{ const k=p.lifecycle_status; (set.get(k)||set.set(k,[]).get(k)).push(p); });
+    set.forEach((ps,st)=>{ const sid=addNode('status::'+st,{type:'status',label:st,color:STATUS_COLORS[st]||'#6E7280',meta:{status:st}}); markRoot(sid);
+      ps.forEach(p=>{ const pid=procNode(p); addEdge(sid,pid); p.requirements.filter(reqPasses).forEach(r=>addEdge(pid, reqNode(r.name,r.domain))); }); });
+  }
+
+  const adj=new Map(); edges.forEach(e=>{ (adj.get(e.source)||adj.set(e.source,[]).get(e.source)).push(e); });
+  return {nodes, edges, edgeMap:new Map(edges.map(e=>[e.id,e])), adj, roots};
+}
+
+/* ---------- visibility (expand/collapse over shared nodes) ---------- */
+function computeVisible(){
+  const visN=new Set(model.roots), visE=new Set(), queue=[...model.roots];
+  while(queue.length){
+    const n=queue.shift();
+    if(expanded.has(n)){
+      for(const e of (model.adj.get(n)||[])){
+        visE.add(e.id);
+        if(!visN.has(e.target)){ visN.add(e.target); queue.push(e.target); }
+      }
+    }
+  }
+  return {visN,visE};
+}
+
+/* ---------- render to cytoscape ---------- */
+function render(){
+  const {visN,visE}=computeVisible();
+  const els=[];
+  visN.forEach(id=>{
+    const d=model.nodes.get(id); const children=(model.adj.get(id)||[]).length; const isExp=expanded.has(id);
+    let dl=d.label; if(children>0) dl += isExp ? '  ▾' : '  ▸ '+children;
+    els.push({data:Object.assign({},d,{displayLabel:dl, expandable:children>0, expanded:isExp})});
+  });
+  visE.forEach(id=>{ const e=model.edgeMap.get(id); els.push({data:{id:e.id,source:e.source,target:e.target}}); });
+  cy.batch(()=>{ cy.elements().remove(); cy.add(els); });
+  runLayout();
+  applySearchHighlight();
+  if(state.selected && cy.getElementById(state.selected).nonempty()) highlightSelection(state.selected);
+}
+function runLayout(){
+  let opts;
+  if(state.layout==='dagre') opts={name:'dagre', rankDir:'LR', nodeSep:16, rankSep:130, edgeSep:8, animate:false, fit:true, padding:40};
+  else opts={name:'breadthfirst', directed:true, spacingFactor:1.1, animate:false, fit:true, padding:40};
+  cy.layout(opts).run();
+}
+
+/* ---------- rebuild on pivot/filter change ---------- */
+function rebuild(resetExpand){
+  model=buildModel(filteredProcs());
+  if(resetExpand) expanded=new Set();
+  else expanded=new Set([...expanded].filter(id=>model.nodes.has(id)));
+  render();
+  renderMetrics();
+  saveState();
+}
+
+/* ---------- interactions ---------- */
+function onNodeTap(id){
+  if((model.adj.get(id)||[]).length){ expanded.has(id) ? expanded.delete(id) : expanded.add(id); }
+  state.selected=id;
+  render();
+  showDetail(id);
+}
+function highlightSelection(id){
+  cy.elements().removeClass('selected dim faded');
+  const node=cy.getElementById(id); if(node.empty()) return;
+  const neigh=node.closedNeighborhood();
+  cy.elements().not(neigh).addClass('dim');
+  node.addClass('selected');
+}
+function clearSelection(){ state.selected=null; cy.elements().removeClass('selected dim'); detail.innerHTML=placeholderHTML; }
+
+/* ---------- search ---------- */
+function matchNode(d,q){
+  if(d.label && d.label.toLowerCase().includes(q)) return true;
+  const m=d.meta||{};
+  return Object.values(m).some(v=> v!=null && (''+v).toLowerCase().includes(q));
+}
+function applySearchHighlight(){
+  cy.nodes().removeClass('searchhit searchdim');
+  const q=state.search.trim().toLowerCase(); if(!q) return;
+  const hits=cy.nodes().filter(n=>matchNode(n.data(),q));
+  cy.nodes().not(hits).addClass('searchdim');
+  hits.addClass('searchhit');
+  return hits;
+}
+
+/* ===================== DETAIL PANEL ===================== */
+const detail=document.getElementById('detail');
+const placeholderHTML='<div class="placeholder">Select any node to see its details here.<br/><br/>Tip: switch the <b>Root</b> to <b>Requirement</b> to see which procedures reuse the same evidence.</div>';
+function esc(s){ return (s==null?'':''+s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function ns(v){ return (v==null||v==='') ? 'Not specified' : esc(v); }
+
+function showDetail(id){
+  const d=model.nodes.get(id); if(!d){ detail.innerHTML=placeholderHTML; return; }
+  let html='<button class="closex" onclick="clearSelection()">×</button>';
+  const badge=(txt,col)=>'<span class="dtype" style="background:'+col+'">'+esc(txt)+'</span>';
+
+  if(d.type==='procedure'){
+    const p=DATA.find(x=>x.id===d.procId);
+    html+=badge('Procedure', TYPE_COLORS.procedure)+'<h2>'+esc(p.name)+'</h2>';
+    html+=row('Member State', ns(p.ms))+row('SDG', SDG_LABELS[p.sdg]?esc(SDG_LABELS[p.sdg]):ns(p.sdg))
+       +row('Jurisdiction', ns(p.jurisdiction))+row('Authority', ns(p.authority))
+       +row('Lifecycle status', statusTag(p.lifecycle_status))+row('Provenance', ns(p.status));
+    if(p.requirements.length){
+      const byDom={}; p.requirements.forEach(r=>{ (byDom[r.domain]||(byDom[r.domain]=[])).push(r.name); });
+      html+='<div class="sub">Requirements ('+p.requirements.length+')</div>';
+      DOMAIN_ORDER.filter(dn=>byDom[dn]).forEach(dn=>{
+        html+='<div style="margin-bottom:8px"><span class="tag" style="background:'+DOMAIN_COLORS[dn]+'">'+esc(dn)+'</span>'
+            +'<ul class="plain">'+byDom[dn].map(n=>'<li>'+esc(n)+'</li>').join('')+'</ul></div>';
+      });
+    } else { html+='<div class="sub">Requirements</div><div style="color:var(--muted);font-size:12.5px">No requirements recorded (empty procedure).</div>'; }
+
+  } else if(d.type==='requirement'){
+    const name=d.label, domain=d.meta.domain;
+    const users=DATA.filter(p=>p.requirements.some(r=>r.name===name));
+    html+=badge('Requirement', DOMAIN_COLORS[domain]||'#6E7280')+'<h2>'+esc(name)+'</h2>';
+    html+=row('Domain','<span class="tag" style="background:'+(DOMAIN_COLORS[domain]||'#6E7280')+'">'+esc(domain)+'</span>')
+       +row('Used by', users.length+' procedure'+(users.length===1?'':'s'));
+    html+='<div class="sub">Procedures using this evidence</div><ul class="plain">'
+       +users.map(p=>'<li>'+esc(p.name)+' <span style="color:var(--muted)">· '+esc(p.ms)+'</span></li>').join('')+'</ul>';
+
+  } else if(d.type==='ms'){
+    const ms=d.meta.ms, ps=DATA.filter(p=>p.ms===ms), withR=ps.filter(p=>p.requirements.length).length;
+    const sb={}; ps.forEach(p=>sb[p.lifecycle_status]=(sb[p.lifecycle_status]||0)+1);
+    html+=badge('Member State', TYPE_COLORS.ms)+'<h2>'+esc(ms)+'</h2>';
+    html+=row('Procedures', ps.length)+row('With requirements', withR+' ('+pct(withR,ps.length)+')')+row('Empty', ps.length-withR);
+    html+='<div class="sub">Lifecycle status</div>'+STATUS_ORDER.filter(s=>sb[s]).map(s=>row(s, sb[s], statusTag(s))).join('');
+    html+='<div class="sub">Procedures</div><ul class="plain">'+ps.map(p=>'<li>'+esc(p.name)+' <span style="color:var(--muted)">· '+p.requirements.length+' req</span></li>').join('')+'</ul>';
+
+  } else if(d.type==='domain'){
+    const dom=d.meta.domain;
+    const reqs=new Set(), procsUsing=new Set();
+    DATA.forEach(p=>p.requirements.forEach(r=>{ if(r.domain===dom){ reqs.add(r.name); procsUsing.add(p.id); } }));
+    html+=badge('Domain', DOMAIN_COLORS[dom]||'#6E7280')+'<h2>'+esc(dom)+'</h2>';
+    html+=row('Distinct requirements', reqs.size)+row('Procedures drawing on it', procsUsing.size);
+    html+='<div class="sub">Requirements in this domain</div><ul class="plain">'+[...reqs].sort().map(n=>'<li>'+esc(n)+'</li>').join('')+'</ul>';
+
+  } else if(d.type==='sdg'){
+    const sdg=d.meta.sdg, ps=DATA.filter(p=>(p.sdg||'(none)')===sdg);
+    html+=badge('SDG category', TYPE_COLORS.sdg)+'<h2>'+esc(SDG_LABELS[sdg]||sdg)+'</h2>';
+    html+=row('Procedures', ps.length);
+    html+='<div class="sub">Procedures</div><ul class="plain">'+ps.map(p=>'<li>'+esc(p.name)+' <span style="color:var(--muted)">· '+esc(p.ms)+'</span></li>').join('')+'</ul>';
+
+  } else if(d.type==='status'){
+    const st=d.meta.status, ps=DATA.filter(p=>p.lifecycle_status===st);
+    html+=badge('Lifecycle status', STATUS_COLORS[st]||'#6E7280')+'<h2>'+esc(st)+'</h2>';
+    html+=row('Procedures', ps.length);
+    html+='<div class="sub">Procedures</div><ul class="plain">'+ps.map(p=>'<li>'+esc(p.name)+' <span style="color:var(--muted)">· '+esc(p.ms)+'</span></li>').join('')+'</ul>';
+  }
+  detail.innerHTML=html;
+}
+function row(k,v,raw){ return '<div class="row"><div class="k">'+esc(k)+'</div><div class="v">'+(raw!==undefined?raw:v)+'</div></div>'; }
+function statusTag(s){ return '<span class="tag" style="background:'+(STATUS_COLORS[s]||'#6E7280')+'">'+esc(s)+'</span>'; }
+function pct(a,b){ return b? Math.round(a/b*100)+'%' : '0%'; }
+
+/* ===================== METRICS ===================== */
+function renderMetrics(){
+  const procs = state.globalMetrics ? DATA : filteredProcs();
+  const total=procs.length;
+  const withR=procs.filter(p=>p.requirements.length).length;
+  const instances=procs.reduce((a,p)=>a+p.requirements.length,0);
+  const distinct=new Set(); procs.forEach(p=>p.requirements.forEach(r=>distinct.add(r.name)));
+  const msSet=new Set(procs.map(p=>p.ms));
+  const domSet=new Set(); procs.forEach(p=>p.requirements.forEach(r=>domSet.add(r.domain)));
+  const avg = withR ? (instances/withR).toFixed(1) : '0';
+
+  const sb={}; procs.forEach(p=>sb[p.lifecycle_status]=(sb[p.lifecycle_status]||0)+1);
+
+  let h='';
+  h+='<div class="big">'
+    +stat(total,'Procedures')+stat(withR,'With reqs')+stat(total-withR,'Empty')+stat(pct(withR,total),'Coverage')+'</div>';
+  h+='<div class="big" style="margin-top:8px">'
+    +stat(instances,'Req. instances')+stat(distinct.size,'Distinct reqs')+stat(avg,'Avg / non-empty')+'</div>';
+  h+='<div class="big" style="margin-top:8px">'+stat(msSet.size,'Member States')+stat(domSet.size,'Domains')+'</div>';
+
+  // lifecycle status bar
+  h+='<div class="sub" style="margin-top:14px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Lifecycle status</div>';
+  h+=stackedBar(STATUS_ORDER.map(s=>({label:s,value:sb[s]||0,color:STATUS_COLORS[s]})), total);
+
+  // domain distribution of requirement instances
+  const dd={}; procs.forEach(p=>p.requirements.forEach(r=>dd[r.domain]=(dd[r.domain]||0)+1));
+  h+='<div class="sub" style="margin-top:14px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Requirement instances by domain</div>';
+  h+=stackedBar(DOMAIN_ORDER.map(dn=>({label:dn,value:dd[dn]||0,color:DOMAIN_COLORS[dn]})), instances);
+
+  // most-reused requirements
+  const reuse={}; procs.forEach(p=>{ const seen=new Set(); p.requirements.forEach(r=>{ if(!seen.has(r.name)){ seen.add(r.name); reuse[r.name]=(reuse[r.name]||0)+1; } }); });
+  const top=Object.entries(reuse).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const maxReuse=top.length?top[0][1]:1;
+  h+='<div class="sub" style="margin-top:14px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Most-reused requirements</div>';
+  h+='<ul class="minilist">'+top.map(([n,c])=>'<li><span class="mn" title="'+esc(n)+'">'+esc(n)+'</span><span class="mb"><span style="width:'+(c/maxReuse*100)+'%"></span></span><span class="mc">'+c+'</span></li>').join('')+'</ul>';
+
+  // top procedures by req count
+  const topP=[...procs].sort((a,b)=>b.requirements.length-a.requirements.length).filter(p=>p.requirements.length).slice(0,5);
+  if(topP.length){
+    const maxP=topP[0].requirements.length;
+    h+='<div class="sub" style="margin-top:14px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Top procedures by requirement count</div>';
+    h+='<ul class="minilist">'+topP.map(p=>'<li><span class="mn" title="'+esc(p.name)+'">'+esc(p.name)+'</span><span class="mb"><span style="width:'+(p.requirements.length/maxP*100)+'%"></span></span><span class="mc">'+p.requirements.length+'</span></li>').join('')+'</ul>';
+  }
+
+  // per-MS table
+  h+='<div class="sub" style="margin-top:14px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Per Member State <span style="text-transform:none;font-weight:400">(click a row to filter)</span></div>';
+  h+=perMsTable(procs);
+
+  document.getElementById('metrics').innerHTML=h;
+  wireMsTable();
+}
+function stat(n,l){ return '<div class="stat"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>'; }
+function stackedBar(parts, total){
+  total=total||parts.reduce((a,p)=>a+p.value,0)||1;
+  let bar='<div class="bar">'+parts.filter(p=>p.value>0).map(p=>'<span style="width:'+(p.value/total*100)+'%;background:'+p.color+'" title="'+esc(p.label)+': '+p.value+'"></span>').join('')+'</div>';
+  bar+='<div class="barlegend">'+parts.map(p=>'<span><i style="background:'+p.color+'"></i>'+esc(p.label)+' '+p.value+'</span>').join('')+'</div>';
+  return bar;
+}
+function perMsTable(procs){
+  const rows={};
+  procs.forEach(p=>{ const r=rows[p.ms]||(rows[p.ms]={ms:p.ms,total:0,withR:0,Draft:0,'In review':0,Published:0,Airtable:0});
+    r.total++; if(p.requirements.length) r.withR++; r[p.lifecycle_status]=(r[p.lifecycle_status]||0)+1; });
+  let arr=Object.values(rows).map(r=>{ r.cov=r.total?r.withR/r.total:0; return r; });
+  const sk=state.metricSort.key, dir=state.metricSort.dir;
+  arr.sort((a,b)=>{ let x=a[sk],y=b[sk]; if(typeof x==='string'){return x.localeCompare(y)*dir;} return (x-y)*dir; });
+  const th=(k,l,num)=>'<th data-k="'+k+'"'+(num?' class="num"':'')+'>'+l+(sk===k?(dir>0?' ▲':' ▼'):'')+'</th>';
+  let t='<table class="mtbl"><thead><tr>'+th('ms','MS')+th('total','P',1)+th('withR','✓',1)+th('cov','Cov',1)+th('Draft','Dr',1)+th('In review','Rv',1)+th('Published','Pu',1)+'</tr></thead><tbody>';
+  arr.forEach(r=>{ t+='<tr class="clickable" data-ms="'+esc(r.ms)+'"><td>'+esc(r.ms)+'</td><td class="num">'+r.total+'</td><td class="num">'+r.withR+'</td><td class="num">'+Math.round(r.cov*100)+'%</td>'
+    +'<td class="num">'+(r.Draft||0)+'</td><td class="num">'+(r['In review']||0)+'</td><td class="num">'+(r.Published||0)+'</td></tr>'; });
+  t+='</tbody></table>';
+  return t;
+}
+function wireMsTable(){
+  document.querySelectorAll('#metrics th[data-k]').forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k; if(state.metricSort.key===k) state.metricSort.dir*=-1; else state.metricSort={key:k,dir:k==='ms'?1:-1};
+    renderMetrics();
+  });
+  document.querySelectorAll('#metrics tr[data-ms]').forEach(tr=>tr.onclick=()=>{
+    const ms=tr.dataset.ms; state.filters.ms=new Set([ms]);
+    syncFilterUI(); rebuild(true);
+  });
+}
+
+/* ===================== FILTER UI ===================== */
+function buildFilterUI(){
+  const msVals=[...new Set(DATA.map(p=>p.ms))].sort((a,b)=> a==='(Airtable)'?1 : b==='(Airtable)'?-1 : a.localeCompare(b));
+  const sdgVals=['X1','X2','X3','X4','X5','X6'];
+  const c=document.getElementById('filters');
+  c.innerHTML=
+    fgroup('Member State', chips('ms', msVals))
+    + fgroup('SDG category', chips('sdg', sdgVals))
+    + fgroup('Domain', chips('domain', DOMAIN_ORDER))
+    + fgroup('Lifecycle status', chips('status', STATUS_ORDER))
+    + fgroup('Requirements', '<select class="fsel" id="hasReqSel"><option value="all">All procedures</option><option value="has">Has requirements</option><option value="none">No requirements</option></select>')
+    + '<div class="btnrow"><button id="clearFilters">Clear filters</button></div>';
+
+  c.querySelectorAll('.chip input').forEach(inp=>inp.onchange=()=>{
+    const set=state.filters[inp.dataset.cat]; inp.checked?set.add(inp.value):set.delete(inp.value);
+    inp.closest('.chip').classList.toggle('on', inp.checked); rebuild(true);
+  });
+  document.getElementById('hasReqSel').onchange=e=>{ state.filters.hasReq=e.target.value; rebuild(true); };
+  document.getElementById('clearFilters').onclick=()=>{
+    ['ms','sdg','domain','status'].forEach(k=>state.filters[k]=new Set()); state.filters.hasReq='all';
+    syncFilterUI(); rebuild(true);
+  };
+  syncFilterUI();
+}
+function fgroup(label, inner){ return '<div class="fgroup"><label class="flbl">'+label+'</label>'+inner+'</div>'; }
+function chips(cat, vals){ return '<div class="chips">'+vals.map(v=>
+  '<label class="chip"><input type="checkbox" data-cat="'+cat+'" value="'+esc(v)+'">'+esc(v)+'</label>').join('')+'</div>'; }
+function syncFilterUI(){
+  document.querySelectorAll('#filters .chip input').forEach(inp=>{
+    const on=state.filters[inp.dataset.cat].has(inp.value); inp.checked=on; inp.closest('.chip').classList.toggle('on',on);
+  });
+  const hr=document.getElementById('hasReqSel'); if(hr) hr.value=state.filters.hasReq;
+}
+
+/* ===================== LEGEND ===================== */
+function buildLegend(){
+  const sw=(c,l)=>'<span class="sw"><i style="background:'+c+'"></i>'+l+'</span>';
+  document.getElementById('legend').innerHTML=
+    '<div class="grp"><b>Nodes</b>'+sw(TYPE_COLORS.procedure,'Procedure')+sw(TYPE_COLORS.ms,'Member State')+sw(TYPE_COLORS.sdg,'SDG')+'</div>'
+    +'<div class="sep"></div>'
+    +'<div class="grp"><b>Domain / requirement</b>'+DOMAIN_ORDER.map(d=>sw(DOMAIN_COLORS[d],d)).join('')+'</div>'
+    +'<div class="sep"></div>'
+    +'<div class="grp"><b>Status</b>'+sw(STATUS_COLORS.Draft,'Draft')+sw(STATUS_COLORS['In review'],'In review')+sw(STATUS_COLORS.Published,'Published')+'</div>';
+}
+
+/* ===================== CYTOSCAPE ===================== */
+function initCy(){
+  cy=cytoscape({
+    container:document.getElementById('cy'),
+    wheelSensitivity:0.25, minZoom:0.15, maxZoom:2.5,
+    style:[
+      {selector:'node', style:{
+        'background-color':'data(color)', 'label':'data(displayLabel)', 'color':'#fff',
+        'font-size':11, 'font-weight':500, 'text-wrap':'wrap', 'text-max-width':150,
+        'text-valign':'center','text-halign':'center', 'shape':'round-rectangle',
+        'width':'label','height':'label','padding':'9px','border-width':0
+      }},
+      {selector:'node[?isRoot]', style:{'font-size':13,'font-weight':700,'padding':'13px','shape':'round-rectangle'}},
+      {selector:'node[type="requirement"]', style:{'shape':'round-rectangle','font-weight':500}},
+      {selector:'edge', style:{
+        'width':1.6,'line-color':'#BBC6DE','target-arrow-color':'#BBC6DE','target-arrow-shape':'triangle',
+        'curve-style':'bezier','arrow-scale':0.85
+      }},
+      {selector:'node.selected', style:{'border-width':3,'border-color':'#1F2A56','border-opacity':0.9}},
+      {selector:'node.searchhit', style:{'border-width':3,'border-color':'#C97A2D'}},
+      {selector:'.dim', style:{'opacity':0.12}},
+      {selector:'.searchdim', style:{'opacity':0.15}}
+    ]
+  });
+  cy.on('tap','node', e=>onNodeTap(e.target.id()));
+  cy.on('tap', e=>{ if(e.target===cy) clearSelection(); });
+  // tooltip
+  const tip=document.getElementById('tooltip');
+  cy.on('mouseover','node', e=>{ const d=e.target.data();
+    tip.innerHTML='<div class="tt">'+esc(TYPE_LABEL[d.type]||d.type)+'</div>'+esc(d.label);
+    tip.style.display='block';
+  });
+  cy.on('mousemove', e=>{ if(tip.style.display==='block'){ const oe=e.originalEvent; tip.style.left=(oe.clientX+14)+'px'; tip.style.top=(oe.clientY+14)+'px'; } });
+  cy.on('mouseout','node', ()=>{ tip.style.display='none'; });
+}
+
+/* ===================== WIRING ===================== */
+function init(){
+  loadState();
+  initCy(); buildFilterUI(); buildLegend();
+  document.getElementById('rootSel').value=state.root;
+  document.getElementById('layoutSel').value=state.layout;
+  document.getElementById('globalToggle').checked=state.globalMetrics;
+
+  document.getElementById('rootSel').onchange=e=>{ state.root=e.target.value; clearSelection(); rebuild(true); };
+  document.getElementById('layoutSel').onchange=e=>{ state.layout=e.target.value; render(); saveState(); };
+  document.getElementById('expandAll').onclick=()=>{ expanded=new Set([...model.adj.keys()]); render(); };
+  document.getElementById('collapseAll').onclick=()=>{ expanded=new Set(); render(); };
+  document.getElementById('resetView').onclick=()=>{ cy.fit(undefined,40); };
+  document.getElementById('exportPng').onclick=()=>{
+    const png=cy.png({full:true,scale:2,bg:'#ffffff'});
+    const a=document.createElement('a'); a.href=png; a.download='oots-map-'+state.root+'.png'; a.click();
+  };
+  document.getElementById('globalToggle').onchange=e=>{ state.globalMetrics=e.target.checked; renderMetrics(); saveState(); };
+
+  const si=document.getElementById('search');
+  si.oninput=()=>{ state.search=si.value; if(state.search.trim()){ expanded=new Set([...model.adj.keys()]); render(); } else { applySearchHighlight(); } };
+  si.onkeydown=e=>{ if(e.key==='Enter'){ const hits=applySearchHighlight(); if(hits && hits.nonempty()){ cy.animate({fit:{eles:hits,padding:60}},{duration:350}); } } };
+
+  rebuild(true);
+}
+window.clearSelection=clearSelection;
+init();
+</script>
+</body>
+</html>
