@@ -65,11 +65,17 @@
   .btnrow button{flex:1; font:inherit; font-size:11.5px; padding:6px; border-radius:7px; border:1px solid var(--line); background:#fff; cursor:pointer; color:var(--navy); font-weight:600;}
   .btnrow button:hover{background:var(--panel2);}
   /* Metrics */
-  .metrics .big{display:flex; gap:8px; flex-wrap:wrap;}
-  .stat{flex:1; min-width:62px; background:var(--panel); border-radius:8px; padding:8px; text-align:center;}
+  .msection{margin-top:14px; padding-top:12px; border-top:1px solid var(--line);}
+  .msection:first-child{margin-top:4px; padding-top:0; border-top:none;}
+  .mtitle{font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--navy); font-weight:700; margin:0 0 8px;}
+  .metrics .big{display:grid; grid-template-columns:repeat(2,1fr); gap:6px;}
+  .metrics .big.three{grid-template-columns:repeat(2,1fr);}
+  .stat{background:var(--panel); border-radius:8px; padding:8px 6px; text-align:center;}
+  .stat.hero{grid-column:1 / -1; background:var(--panel2);}
   .stat .n{font-size:18px; font-weight:700; color:var(--navy); line-height:1;}
+  .stat.hero .n{font-size:22px;}
   .stat .l{font-size:10px; color:var(--muted); margin-top:3px;}
-  .bar{display:flex; height:14px; border-radius:7px; overflow:hidden; margin:6px 0 4px; background:var(--panel2);}
+  .bar{display:flex; height:14px; border-radius:7px; overflow:hidden; margin:6px 0 6px; background:var(--panel2);}
   .bar > span{display:block; height:100%;}
   .barlegend{display:flex; flex-wrap:wrap; gap:8px; font-size:10.5px; color:var(--muted);}
   .barlegend i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:3px; vertical-align:middle;}
@@ -292,8 +298,24 @@ function computeVisible(){
   return {visN,visE};
 }
 
-/* ---------- render to cytoscape ---------- */
-function render(){
+/* ---------- render to cytoscape ----------
+   fitView: 'fit'      -> frame the whole graph (use on pivot/filter/expand-all/reset)
+            'preserve' -> keep current pan/zoom, optionally keep an anchor node steady
+            'none'     -> same as preserve without anchor
+*/
+function render(fitView, anchorId){
+  fitView = fitView || 'preserve';
+  // remember camera + where the anchor node currently sits on screen
+  const prevPan = cy.pan(), prevZoom = cy.zoom();
+  let anchorScreenBefore=null;
+  if(fitView==='preserve' && anchorId){
+    const a=cy.getElementById(anchorId);
+    if(a && a.nonempty()){
+      const p=a.position();
+      anchorScreenBefore={ x: p.x*prevZoom+prevPan.x, y: p.y*prevZoom+prevPan.y };
+    }
+  }
+
   const {visN,visE}=computeVisible();
   const els=[];
   visN.forEach(id=>{
@@ -303,14 +325,30 @@ function render(){
   });
   visE.forEach(id=>{ const e=model.edgeMap.get(id); els.push({data:{id:e.id,source:e.source,target:e.target}}); });
   cy.batch(()=>{ cy.elements().remove(); cy.add(els); });
-  runLayout();
+
+  runLayout(fitView==='fit');
+
+  if(fitView!=='fit'){
+    // restore the camera exactly as it was, so nothing jumps
+    cy.zoom(prevZoom); cy.pan(prevPan);
+    // then, if we have an anchor, nudge the pan so the clicked node stays under the cursor
+    if(anchorScreenBefore){
+      const a=cy.getElementById(anchorId);
+      if(a && a.nonempty()){
+        const p=a.position();
+        const screenNow={ x:p.x*prevZoom+prevPan.x, y:p.y*prevZoom+prevPan.y };
+        cy.panBy({ x: anchorScreenBefore.x-screenNow.x, y: anchorScreenBefore.y-screenNow.y });
+      }
+    }
+  }
+
   applySearchHighlight();
   if(state.selected && cy.getElementById(state.selected).nonempty()) highlightSelection(state.selected);
 }
-function runLayout(){
+function runLayout(doFit){
   let opts;
-  if(state.layout==='dagre') opts={name:'dagre', rankDir:'LR', nodeSep:16, rankSep:130, edgeSep:8, animate:false, fit:true, padding:40};
-  else opts={name:'breadthfirst', directed:true, spacingFactor:1.1, animate:false, fit:true, padding:40};
+  if(state.layout==='dagre') opts={name:'dagre', rankDir:'LR', nodeSep:18, rankSep:140, edgeSep:8, animate:false, fit:!!doFit, padding:60};
+  else opts={name:'breadthfirst', directed:true, spacingFactor:1.15, animate:false, fit:!!doFit, padding:60};
   cy.layout(opts).run();
 }
 
@@ -319,26 +357,30 @@ function rebuild(resetExpand){
   model=buildModel(filteredProcs());
   if(resetExpand) expanded=new Set();
   else expanded=new Set([...expanded].filter(id=>model.nodes.has(id)));
-  render();
+  render('fit');           // pivot / filter change: re-frame the whole tree
   renderMetrics();
   saveState();
 }
 
 /* ---------- interactions ---------- */
 function onNodeTap(id){
-  if((model.adj.get(id)||[]).length){ expanded.has(id) ? expanded.delete(id) : expanded.add(id); }
+  const wasExpandable=(model.adj.get(id)||[]).length>0;
+  if(wasExpandable){ expanded.has(id) ? expanded.delete(id) : expanded.add(id); }
   state.selected=id;
-  render();
+  // keep the camera steady, anchored on the node the user clicked
+  render('preserve', id);
   showDetail(id);
 }
 function highlightSelection(id){
-  cy.elements().removeClass('selected dim faded');
+  cy.elements().removeClass('selected dim faded hl');
   const node=cy.getElementById(id); if(node.empty()) return;
-  const neigh=node.closedNeighborhood();
-  cy.elements().not(neigh).addClass('dim');
+  const neigh=node.closedNeighborhood();          // node + direct neighbours + connecting edges
+  cy.elements().not(neigh).addClass('dim');        // gentle 0.35 dim, still readable
+  neigh.connectedEdges().addClass('hl');           // emphasise the edges that connect to it
+  node.connectedEdges().addClass('hl');
   node.addClass('selected');
 }
-function clearSelection(){ state.selected=null; cy.elements().removeClass('selected dim'); detail.innerHTML=placeholderHTML; }
+function clearSelection(){ state.selected=null; cy.elements().removeClass('selected dim hl'); detail.innerHTML=placeholderHTML; }
 
 /* ---------- search ---------- */
 function matchNode(d,q){
@@ -434,48 +476,72 @@ function renderMetrics(){
   const msSet=new Set(procs.map(p=>p.ms));
   const domSet=new Set(); procs.forEach(p=>p.requirements.forEach(r=>domSet.add(r.domain)));
   const avg = withR ? (instances/withR).toFixed(1) : '0';
-
   const sb={}; procs.forEach(p=>sb[p.lifecycle_status]=(sb[p.lifecycle_status]||0)+1);
 
   let h='';
+
+  // --- SECTION 1: Coverage overview ---
+  h+='<div class="msection">';
+  h+='<div class="mtitle">Coverage</div>';
   h+='<div class="big">'
-    +stat(total,'Procedures')+stat(withR,'With reqs')+stat(total-withR,'Empty')+stat(pct(withR,total),'Coverage')+'</div>';
-  h+='<div class="big" style="margin-top:8px">'
-    +stat(instances,'Req. instances')+stat(distinct.size,'Distinct reqs')+stat(avg,'Avg / non-empty')+'</div>';
-  h+='<div class="big" style="margin-top:8px">'+stat(msSet.size,'Member States')+stat(domSet.size,'Domains')+'</div>';
+     +statHero(pct(withR,total),'of procedures have requirements')
+     +stat(total,'Procedures')+stat(withR,'With reqs')
+     +stat(total-withR,'Empty')+stat(msSet.size,'Member States')+'</div>';
+  h+='</div>';
 
-  // lifecycle status bar
-  h+='<div class="sub" style="margin-top:14px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Lifecycle status</div>';
+  // --- SECTION 2: Requirements overview ---
+  h+='<div class="msection">';
+  h+='<div class="mtitle">Requirements</div>';
+  h+='<div class="big">'
+     +stat(instances,'Instances')+stat(distinct.size,'Distinct')
+     +stat(avg,'Avg / procedure')+stat(domSet.size,'Domains')+'</div>';
+  h+='</div>';
+
+  // --- SECTION 3: Lifecycle status ---
+  h+='<div class="msection">';
+  h+='<div class="mtitle">Lifecycle status</div>';
   h+=stackedBar(STATUS_ORDER.map(s=>({label:s,value:sb[s]||0,color:STATUS_COLORS[s]})), total);
+  h+='</div>';
 
-  // domain distribution of requirement instances
+  // --- SECTION 4: Requirement instances by domain ---
   const dd={}; procs.forEach(p=>p.requirements.forEach(r=>dd[r.domain]=(dd[r.domain]||0)+1));
-  h+='<div class="sub" style="margin-top:14px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Requirement instances by domain</div>';
+  h+='<div class="msection">';
+  h+='<div class="mtitle">Requirement instances by domain</div>';
   h+=stackedBar(DOMAIN_ORDER.map(dn=>({label:dn,value:dd[dn]||0,color:DOMAIN_COLORS[dn]})), instances);
+  h+='</div>';
 
-  // most-reused requirements
+  // --- SECTION 5: Most-reused requirements ---
   const reuse={}; procs.forEach(p=>{ const seen=new Set(); p.requirements.forEach(r=>{ if(!seen.has(r.name)){ seen.add(r.name); reuse[r.name]=(reuse[r.name]||0)+1; } }); });
   const top=Object.entries(reuse).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  const maxReuse=top.length?top[0][1]:1;
-  h+='<div class="sub" style="margin-top:14px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Most-reused requirements</div>';
-  h+='<ul class="minilist">'+top.map(([n,c])=>'<li><span class="mn" title="'+esc(n)+'">'+esc(n)+'</span><span class="mb"><span style="width:'+(c/maxReuse*100)+'%"></span></span><span class="mc">'+c+'</span></li>').join('')+'</ul>';
+  if(top.length){
+    const maxReuse=top[0][1];
+    h+='<div class="msection">';
+    h+='<div class="mtitle">Most-reused requirements</div>';
+    h+='<ul class="minilist">'+top.map(([n,c])=>'<li><span class="mn" title="'+esc(n)+'">'+esc(n)+'</span><span class="mb"><span style="width:'+(c/maxReuse*100)+'%"></span></span><span class="mc">'+c+'</span></li>').join('')+'</ul>';
+    h+='</div>';
+  }
 
-  // top procedures by req count
+  // --- SECTION 6: Top procedures by requirement count ---
   const topP=[...procs].sort((a,b)=>b.requirements.length-a.requirements.length).filter(p=>p.requirements.length).slice(0,5);
   if(topP.length){
     const maxP=topP[0].requirements.length;
-    h+='<div class="sub" style="margin-top:14px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Top procedures by requirement count</div>';
+    h+='<div class="msection">';
+    h+='<div class="mtitle">Top procedures by requirement count</div>';
     h+='<ul class="minilist">'+topP.map(p=>'<li><span class="mn" title="'+esc(p.name)+'">'+esc(p.name)+'</span><span class="mb"><span style="width:'+(p.requirements.length/maxP*100)+'%"></span></span><span class="mc">'+p.requirements.length+'</span></li>').join('')+'</ul>';
+    h+='</div>';
   }
 
-  // per-MS table
-  h+='<div class="sub" style="margin-top:14px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">Per Member State <span style="text-transform:none;font-weight:400">(click a row to filter)</span></div>';
+  // --- SECTION 7: Per Member State ---
+  h+='<div class="msection">';
+  h+='<div class="mtitle">Per Member State <span style="text-transform:none;font-weight:400;color:var(--muted)">(click a row to filter)</span></div>';
   h+=perMsTable(procs);
+  h+='</div>';
 
   document.getElementById('metrics').innerHTML=h;
   wireMsTable();
 }
 function stat(n,l){ return '<div class="stat"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>'; }
+function statHero(n,l){ return '<div class="stat hero"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>'; }
 function stackedBar(parts, total){
   total=total||parts.reduce((a,p)=>a+p.value,0)||1;
   let bar='<div class="bar">'+parts.filter(p=>p.value>0).map(p=>'<span style="width:'+(p.value/total*100)+'%;background:'+p.color+'" title="'+esc(p.label)+': '+p.value+'"></span>').join('')+'</div>';
@@ -562,18 +628,19 @@ function initCy(){
         'background-color':'data(color)', 'label':'data(displayLabel)', 'color':'#fff',
         'font-size':11, 'font-weight':500, 'text-wrap':'wrap', 'text-max-width':150,
         'text-valign':'center','text-halign':'center', 'shape':'round-rectangle',
-        'width':'label','height':'label','padding':'9px','border-width':0
+        'width':170,'height':'label','min-height':34,'padding':'10px','border-width':0
       }},
-      {selector:'node[?isRoot]', style:{'font-size':13,'font-weight':700,'padding':'13px','shape':'round-rectangle'}},
+      {selector:'node[?isRoot]', style:{'font-size':13,'font-weight':700,'width':190,'padding':'12px','shape':'round-rectangle'}},
       {selector:'node[type="requirement"]', style:{'shape':'round-rectangle','font-weight':500}},
       {selector:'edge', style:{
         'width':1.6,'line-color':'#BBC6DE','target-arrow-color':'#BBC6DE','target-arrow-shape':'triangle',
         'curve-style':'bezier','arrow-scale':0.85
       }},
-      {selector:'node.selected', style:{'border-width':3,'border-color':'#1F2A56','border-opacity':0.9}},
+      {selector:'node.selected', style:{'border-width':4,'border-color':'#C97A2D','border-opacity':1}},
+      {selector:'edge.hl', style:{'line-color':'#1F2A56','target-arrow-color':'#1F2A56','width':2.4}},
       {selector:'node.searchhit', style:{'border-width':3,'border-color':'#C97A2D'}},
-      {selector:'.dim', style:{'opacity':0.12}},
-      {selector:'.searchdim', style:{'opacity':0.15}}
+      {selector:'.dim', style:{'opacity':0.35}},
+      {selector:'.searchdim', style:{'opacity':0.18}}
     ]
   });
   cy.on('tap','node', e=>onNodeTap(e.target.id()));
@@ -597,10 +664,10 @@ function init(){
   document.getElementById('globalToggle').checked=state.globalMetrics;
 
   document.getElementById('rootSel').onchange=e=>{ state.root=e.target.value; clearSelection(); rebuild(true); };
-  document.getElementById('layoutSel').onchange=e=>{ state.layout=e.target.value; render(); saveState(); };
-  document.getElementById('expandAll').onclick=()=>{ expanded=new Set([...model.adj.keys()]); render(); };
-  document.getElementById('collapseAll').onclick=()=>{ expanded=new Set(); render(); };
-  document.getElementById('resetView').onclick=()=>{ cy.fit(undefined,40); };
+  document.getElementById('layoutSel').onchange=e=>{ state.layout=e.target.value; render('fit'); saveState(); };
+  document.getElementById('expandAll').onclick=()=>{ expanded=new Set([...model.adj.keys()]); render('fit'); };
+  document.getElementById('collapseAll').onclick=()=>{ expanded=new Set(); state.selected=null; render('fit'); detail.innerHTML=placeholderHTML; };
+  document.getElementById('resetView').onclick=()=>{ cy.animate({fit:{eles:cy.elements(),padding:60}},{duration:300}); };
   document.getElementById('exportPng').onclick=()=>{
     const png=cy.png({full:true,scale:2,bg:'#ffffff'});
     const a=document.createElement('a'); a.href=png; a.download='oots-map-'+state.root+'.png'; a.click();
@@ -608,7 +675,7 @@ function init(){
   document.getElementById('globalToggle').onchange=e=>{ state.globalMetrics=e.target.checked; renderMetrics(); saveState(); };
 
   const si=document.getElementById('search');
-  si.oninput=()=>{ state.search=si.value; if(state.search.trim()){ expanded=new Set([...model.adj.keys()]); render(); } else { applySearchHighlight(); } };
+  si.oninput=()=>{ state.search=si.value; if(state.search.trim()){ expanded=new Set([...model.adj.keys()]); render('preserve'); } else { applySearchHighlight(); } };
   si.onkeydown=e=>{ if(e.key==='Enter'){ const hits=applySearchHighlight(); if(hits && hits.nonempty()){ cy.animate({fit:{eles:hits,padding:60}},{duration:350}); } } };
 
   rebuild(true);
